@@ -3,55 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>세련된 테트리스 게임</title>
+    <title>테트리스 게임</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
             background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
         }
-        .game-container {
+        #game-container {
             text-align: center;
         }
         #game-board {
-            width: 300px;
-            height: 600px;
             border: 2px solid #333;
-            background-color: #111;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-            display: inline-grid;
-            grid-template-columns: repeat(10, 1fr);
+            display: inline-block;
+        }
+        .row {
+            display: flex;
         }
         .cell {
-            border: 1px solid #222;
-            box-sizing: border-box;
-        }
-        .filled {
-            background-color: #00f;
-        }
-        #start-button {
-            font-size: 18px;
-            padding: 10px 20px;
-            margin-top: 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        #start-button:hover {
-            background-color: #45a049;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
         }
         #score {
-            font-size: 24px;
             margin-top: 20px;
+            font-size: 24px;
         }
-        .game-over {
-            position: fixed;
+        #game-over {
+            display: none;
+            position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
@@ -60,99 +44,100 @@
             padding: 20px;
             border-radius: 10px;
             font-size: 24px;
-            z-index: 1000;
         }
     </style>
 </head>
 <body>
-    <div class="game-container">
+    <div id="game-container">
         <div id="game-board"></div>
         <div id="score">점수: 0</div>
-        <button id="start-button">게임 시작</button>
     </div>
+    <div id="game-over">게임 오버!</div>
+
     <script>
-        const board = document.getElementById('game-board');
-        const startButton = document.getElementById('start-button');
-        const scoreDisplay = document.getElementById('score');
         const ROWS = 20;
         const COLS = 10;
-        let gameBoard = [];
+        const BLOCK_SIZE = 20;
+        const EMPTY_CELL = 0;
+        const COLORS = ['#00A1E4', '#FFD400', '#FF3F3E', '#7ED321', '#8B572A', '#B63CF5', '#F1AEAE'];
+        const SHAPES = [
+            [[1, 1, 1, 1]],            // I
+            [[1, 1], [1, 1]],          // O
+            [[1, 1, 1], [0, 1, 0]],    // T
+            [[1, 1, 1], [1, 0, 0]],    // L
+            [[1, 1, 1], [0, 0, 1]],    // J
+            [[1, 1, 0], [0, 1, 1]],    // S
+            [[0, 1, 1], [1, 1, 0]]     // Z
+        ];
+
+        let board = Array(ROWS).fill().map(() => Array(COLS).fill(EMPTY_CELL));
         let currentPiece = null;
-        let currentPiecePosition = {x: 0, y: 0};
-        let gameInterval = null;
+        let currentX = 0;
+        let currentY = 0;
+        let currentColor = '';
         let score = 0;
-        let gameSpeed = 1000;  // 초기 속도 (1초)
-        let gameTime = 0;
+        let gameLoop = null;
+
+        const gameBoard = document.getElementById('game-board');
+        const scoreDisplay = document.getElementById('score');
+        const gameOverDisplay = document.getElementById('game-over');
 
         function createBoard() {
-            board.innerHTML = '';
-            for (let i = 0; i < ROWS * COLS; i++) {
-                const cell = document.createElement('div');
-                cell.classList.add('cell');
-                board.appendChild(cell);
+            for (let row = 0; row < ROWS; row++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+                for (let col = 0; col < COLS; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    rowDiv.appendChild(cell);
+                }
+                gameBoard.appendChild(rowDiv);
             }
         }
 
-        function updateBoard() {
+        function drawBoard() {
             const cells = document.querySelectorAll('.cell');
-            gameBoard.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    cells[y * COLS + x].classList.toggle('filled', value);
-                });
-            });
-        }
-
-        function createPiece() {
-            const pieces = [
-                [[1, 1, 1, 1]],
-                [[1, 1], [1, 1]],
-                [[1, 1, 1], [0, 1, 0]],
-                [[1, 1, 1], [1, 0, 0]],
-                [[1, 1, 1], [0, 0, 1]]
-            ];
-            return pieces[Math.floor(Math.random() * pieces.length)];
-        }
-
-        function placePiece() {
-            currentPiece = createPiece();
-            currentPiecePosition = {
-                x: Math.floor(COLS / 2) - Math.floor(currentPiece[0].length / 2),
-                y: 0
-            };
-            if (!canMoveTo(currentPiecePosition.x, currentPiecePosition.y, currentPiece)) {
-                gameOver();
-                return false;
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const cellValue = board[row][col];
+                    cells[row * COLS + col].style.backgroundColor = cellValue ? cellValue : 'white';
+                }
             }
-            drawPiece();
-            return true;
+        }
+
+        function createNewPiece() {
+            const randomIndex = Math.floor(Math.random() * SHAPES.length);
+            currentPiece = SHAPES[randomIndex];
+            currentColor = COLORS[randomIndex];
+            currentX = Math.floor(COLS / 2) - Math.floor(currentPiece[0].length / 2);
+            currentY = 0;
+
+            if (!canMove(0, 0)) {
+                gameOver();
+            }
         }
 
         function drawPiece() {
+            const cells = document.querySelectorAll('.cell');
             currentPiece.forEach((row, y) => {
                 row.forEach((value, x) => {
                     if (value) {
-                        gameBoard[y + currentPiecePosition.y][x + currentPiecePosition.x] = value;
-                    }
-                });
-            });
-            updateBoard();
-        }
-
-        function erasePiece() {
-            currentPiece.forEach((row, y) => {
-                row.forEach((value, x) => {
-                    if (value) {
-                        gameBoard[y + currentPiecePosition.y][x + currentPiecePosition.x] = 0;
+                        const cellIndex = (currentY + y) * COLS + (currentX + x);
+                        if (cellIndex >= 0 && cellIndex < cells.length) {
+                            cells[cellIndex].style.backgroundColor = currentColor;
+                        }
                     }
                 });
             });
         }
 
-        function canMoveTo(newX, newY, piece = currentPiece) {
+        function canMove(offsetX, offsetY, piece = currentPiece) {
             for (let y = 0; y < piece.length; y++) {
                 for (let x = 0; x < piece[y].length; x++) {
                     if (piece[y][x]) {
-                        if (newY + y >= ROWS || newX + x < 0 || newX + x >= COLS || gameBoard[newY + y][newX + x]) {
+                        const newX = currentX + x + offsetX;
+                        const newY = currentY + y + offsetY;
+                        if (newX < 0 || newX >= COLS || newY >= ROWS || (newY >= 0 && board[newY][newX])) {
                             return false;
                         }
                     }
@@ -161,96 +146,92 @@
             return true;
         }
 
-        function moveDown() {
-            if (canMoveTo(currentPiecePosition.x, currentPiecePosition.y + 1)) {
-                erasePiece();
-                currentPiecePosition.y++;
-                drawPiece();
-            } else {
-                placePiece();
-            }
-            checkLines();
-            updateBoard();
+        function merge() {
+            currentPiece.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        board[currentY + y][currentX + x] = currentColor;
+                    }
+                });
+            });
         }
 
-        function checkLines() {
-            for (let y = ROWS - 1; y >= 0; y--) {
-                if (gameBoard[y].every(cell => cell)) {
-                    gameBoard.splice(y, 1);
-                    gameBoard.unshift(new Array(COLS).fill(0));
-                    score += 100;
-                    scoreDisplay.textContent = `점수: ${score}`;
+        function rotate() {
+            const rotated = currentPiece[0].map((_, i) => currentPiece.map(row => row[row.length - 1 - i]));
+            if (canMove(0, 0, rotated)) {
+                currentPiece = rotated;
+            } else if (canMove(1, 0, rotated)) {
+                currentX++;
+                currentPiece = rotated;
+            } else if (canMove(-1, 0, rotated)) {
+                currentX--;
+                currentPiece = rotated;
+            }
+        }
+
+        function clearLines() {
+            let linesCleared = 0;
+            for (let row = ROWS - 1; row >= 0; ) {
+                if (board[row].every(cell => cell !== EMPTY_CELL)) {
+                    board.splice(row, 1);
+                    board.unshift(Array(COLS).fill(EMPTY_CELL));
+                    linesCleared++;
+                } else {
+                    row--;
                 }
             }
+            if (linesCleared > 0) {
+                score += linesCleared * 100;
+                scoreDisplay.textContent = `점수: ${score}`;
+            }
         }
 
-        function startGame() {
-            gameBoard = Array.from({length: ROWS}, () => new Array(COLS).fill(0));
-            score = 0;
-            gameSpeed = 1000;
-            gameTime = 0;
-            scoreDisplay.textContent = `점수: ${score}`;
-            if (gameInterval) clearInterval(gameInterval);
-            if (placePiece()) {
-                gameInterval = setInterval(() => {
-                    moveDown();
-                    gameTime += gameSpeed;
-                    if (gameTime % 10000 === 0) {  // 10초마다
-                        gameSpeed = Math.max(100, gameSpeed - 100);  // 속도 증가 (최소 0.1초)
-                        clearInterval(gameInterval);
-                        gameInterval = setInterval(moveDown, gameSpeed);
-                    }
-                }, gameSpeed);
+        function moveDown() {
+            if (canMove(0, 1)) {
+                currentY++;
+            } else {
+                merge();
+                clearLines();
+                createNewPiece();
             }
         }
 
         function gameOver() {
-            clearInterval(gameInterval);
-            const gameOverPopup = document.createElement('div');
-            gameOverPopup.classList.add('game-over');
-            gameOverPopup.textContent = '게임 오버!';
-            document.body.appendChild(gameOverPopup);
-            setTimeout(() => {
-                gameOverPopup.remove();
-            }, 3000);
+            clearInterval(gameLoop);
+            gameOverDisplay.style.display = 'block';
         }
 
-        createBoard();
-        startButton.addEventListener('click', startGame);
-
-        // 키보드 컨트롤 추가
-        document.addEventListener('keydown', (e) => {
-            if (!currentPiece) return;
-            switch(e.key) {
-                case 'ArrowLeft':
-                    if (canMoveTo(currentPiecePosition.x - 1, currentPiecePosition.y)) {
-                        erasePiece();
-                        currentPiecePosition.x--;
-                        drawPiece();
-                    }
+        function handleKeyPress(event) {
+            switch (event.keyCode) {
+                case 37: // 왼쪽 화살표
+                    if (canMove(-1, 0)) currentX--;
                     break;
-                case 'ArrowRight':
-                    if (canMoveTo(currentPiecePosition.x + 1, currentPiecePosition.y)) {
-                        erasePiece();
-                        currentPiecePosition.x++;
-                        drawPiece();
-                    }
+                case 39: // 오른쪽 화살표
+                    if (canMove(1, 0)) currentX++;
                     break;
-                case 'ArrowDown':
+                case 40: // 아래쪽 화살표
                     moveDown();
                     break;
-                case 'ArrowUp':
-                    // 회전 로직 (간단한 구현)
-                    const rotated = currentPiece[0].map((_, i) => currentPiece.map(row => row[i]).reverse());
-                    if (canMoveTo(currentPiecePosition.x, currentPiecePosition.y, rotated)) {
-                        erasePiece();
-                        currentPiece = rotated;
-                        drawPiece();
-                    }
+                case 38: // 위쪽 화살표
+                    rotate();
                     break;
             }
-            updateBoard();
-        });
+            drawBoard();
+            drawPiece();
+        }
+
+        function startGame() {
+            createBoard();
+            createNewPiece();
+            gameLoop = setInterval(() => {
+                moveDown();
+                drawBoard();
+                drawPiece();
+            }, 500);
+            document.addEventListener('keydown', handleKeyPress);
+        }
+
+        startGame();
     </script>
 </body>
 </html>
